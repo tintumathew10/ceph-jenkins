@@ -1,0 +1,7 @@
+jenkins:
+  systemMessage: "Ceph Jenkins Controller"
+  numExecutors: 1
+  mode: EXCLUSIVE
+
+jobs:
+  - file: "/var/jenkins_home/seed.groovy"
