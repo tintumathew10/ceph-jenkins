@@ -1,0 +1,31 @@
+jenkins:
+  securityRealm:
+    local:
+      users:
+        - id: "admin"
+          password: "<your_admin_password>"
+
+  nodes:
+    - permanent:
+        name: "ceph-agent-01"
+        launcher:
+          ssh:
+            host: "<ceph_agent_01_ip_address>"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - basicSSHUserPrivateKey:
+              id: "ceph-agent-ssh-key"
+              privateKeySource:
+                directEntry:
+                  privateKey: |
+                    -----BEGIN OPENSSH PRIVATE KEY-----
+                    ... <your_full_private_key> ...
+                    -----END OPENSSH PRIVATE KEY-----
+
+unclassified:
+  location:
+    url: "http://<jenkins_(ip_address|url)>:8080/"
+    adminAddress: "<your_admin_email>"

@@ -1,6 +1,6 @@
 jenkins:
   systemMessage: "Ceph Jenkins Controller"
-  numExecutors: 1
+  numExecutors: 0
   mode: EXCLUSIVE
 
   # Security configuration
@@ -10,11 +10,44 @@ jenkins:
       users:
         - id: "admin"
           password: "${JENKINS_ADMIN_PASSWORD:-admin123}"
+
   authorizationStrategy:
     globalMatrix:
       permissions:
         - "Overall/Administer:admin"
-        - "Overall/Read:authenticated"
+        - "Overall/Read:anonymous"
+
+  nodes:
+    - permanent:
+        name: "ceph-agent-01"
+        remoteFS: "/home/jenkins"
+        labelString: "teuthology"
+        mode: NORMAL
+        numExecutors: 10
+        launcher:
+          ssh:
+            host: "${CEPH_AGENT_01_IP}"
+            port: 22
+            credentialsId: "ceph-agent-ssh-key"
+            sshHostKeyVerificationStrategy: "nonVerifyingKeyVerificationStrategy"
+
+credentials:
+  system:
+    domainCredentials:
+      - credentials:
+          - basicSSHUserPrivateKey:
+              scope: SYSTEM
+              id: "ceph-agent-ssh-key"
+              username: "jenkins"
+              description: "SSH Key for agent nodes"
+              privateKeySource:
+                directEntry:
+                  privateKey: "${SSH_PRIVATE_KEY}"
+
+unclassified:
+  location:
+    url: "${JENKINS_BUILD_URL}"
+    adminAddress: "${JENKINS_ADMIN_EMAIL}
 
 # Seeder job
 jobs:

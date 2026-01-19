@@ -14,6 +14,7 @@ Before deploying the containerized controller, ensure the following requirements
     * `Containerfile`: To build the custom Jenkins image.
     * `plugins.txt`: Listing required plugins.
     * `casc.yaml`: Defining system-level configurations.
+    * `properties.yaml`: Actual environment settings.
     * `jobs/seed.groovy`: The initial script to bootstrap the job-processing logic.
 
 ### Deployment Steps
@@ -24,18 +25,20 @@ Deployment follows "Configuration as Code" workflow to maintain the repository a
     ```sh
     podman build -t ceph-jenkins-controller:latest .
     ```
-2. **Launch the Controller:** Start the container with port mappings for the UI and agent communication. Ensure the persistent volume is mounted:
+2. **Update Properties:** Fill out `properties.yaml` with your real-world Jenkins configs. This "hydrates" the `casc.yaml` template with your actual cluster details and secrets.
+
+3. **Launch the Controller:** Start the container with port mappings for the UI and agent communication. Ensure the persistent volume is mounted:
     ```sh
     podman run -d \
-        --name jenkins-controller \
+        --name ceph-jenkins \
         -p 8080:8080 -p 50000:50000 \
         -v jenkins_home:/var/jenkins_home \
-        -e JENKINS_ADMIN_PASSWORD="<your_secure_password>" \
+        -v $(pwd)/properties.yaml:/var/jenkins_home/casc_configs/02-properties.yaml:z \
         ceph-jenkins-controller:latest
     ```
-3. **Bootstrap Jobs:** Upon startup, JCasC will automatically execute `seed.groovy` to create the `Seed` job.
+4. **Bootstrap Jobs:** Upon startup, JCasC will automatically execute `seed.groovy` to create the `Seed` job.
 
-4. **Process Project Jobs:** Run the `Seed` from the Jenkins UI, providing the relative path to your project's Groovy definitions to generate project-specific pipelines.
+5. **Process Project Jobs:** Run the `Seed` from the Jenkins UI, providing the relative path to your project's Groovy definitions to generate project-specific pipelines.
 
 ### Logging
 
