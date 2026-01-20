@@ -1,7 +1,8 @@
 jenkins:
   systemMessage: "Ceph Jenkins Controller"
-  numExecutors: 0
+  numExecutors: 1
   mode: EXCLUSIVE
+  labelString: "controller"
 
   # Security configuration
   securityRealm:
@@ -47,6 +48,17 @@ credentials:
               id: "ceph-agent-ssh-key"
               username: "jenkins"
               description: "SSH Key for agent nodes"
+
+security:
+  globalJobDslSecurityConfiguration:
+    # Allow Job DSL to run without manual script approval.
+    useScriptSecurity: false
+  scriptApproval:
+    # Allow the specific DSL scripts to bypass the sandbox.
+    approvedSignatures:
+      - "method javaposse.jobdsl.dsl.DslFactory job java.lang.String"
+      - "method javaposse.jobdsl.dsl.Job scm(groovy.lang.Closure)"
+
 
 # Seeder job
 jobs:

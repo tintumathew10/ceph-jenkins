@@ -1,20 +1,42 @@
 // Seed job created during the jenkins initialization
-freeStyleJob('Seed') {
-    description('Seed Job to process DSL scripts')
+job('seed-job') {
+    displayName('Seed Job')
+    description('Dynamic seed job for Ceph Jenkins pipelines')
 
-    parameters {
-        // Default path to project directory
-        stringParam('DSL_PATH', 'jobs/*.groovy', 'Relative path to the project DSL script')
+    // Build retention policy
+    logRotator {
+        numToKeep(10)
     }
 
+    // Label to restrict where the job can run
+    // TODO: Update this label to `infra` node
+    label('controller')
+
+    // Repo and Branch parameters
+    parameters {
+        stringParam('REPO_URL', 'https://github.com/vamahaja/ceph-jenkins.git', 'The Git repository containing your DSL scripts')
+        stringParam('BRANCH_NAME', 'main', 'The branch to check out and process')
+    }
+
+    // Clone user repo
+    scm {
+        git {
+            remote {
+                url('${REPO_URL}')
+            }
+            branch('${BRANCH_NAME}')
+        }
+    }
+
+    // Process DSL scripts present in the repository
     steps {
-        dsl {
-            // Path to process DSL scripts
-            external('${DSL_PATH}')
+        jobDsl {
+            // Targets the DSL files from `jobs` directory in the repo
+            targets 'jobs/*.groovy'
             
-            // Standard persistence settings
-            removeAction('IGNORE')
-            removeViewAction('IGNORE')
+            // Clean up jobs that are no longer present in the DSL scripts
+            removedJobAction('DELETE')
+            removedViewAction('DELETE')
             lookupStrategy('SEED_JOB')
         }
     }
