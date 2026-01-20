@@ -30,7 +30,7 @@ Deployment follows "Configuration as Code" workflow to maintain the repository a
 3. **Launch the Controller:** Start the container with port mappings for the UI and agent communication. Ensure the persistent volume is mounted:
     ```sh
     podman run -d \
-        --name ceph-jenkins \
+        --name jenkins-controller \
         -p 8080:8080 -p 50000:50000 \
         -v jenkins_home:/var/jenkins_home \
         -v $(pwd)/properties.yaml:/var/jenkins_home/casc_configs/02-properties.yaml:z \

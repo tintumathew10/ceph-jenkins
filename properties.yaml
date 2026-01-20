@@ -7,10 +7,10 @@ jenkins:
 
   nodes:
     - permanent:
-        name: "ceph-agent-01"
+        name: "ceph-agent"
         launcher:
           ssh:
-            host: "<ceph_agent_01_ip_address>"
+            host: "<ceph_agent_ip_address>"
 
 credentials:
   system:
@@ -27,5 +27,5 @@ credentials:
 
 unclassified:
   location:
-    url: "http://<jenkins_(ip_address|url)>:8080/"
-    adminAddress: "<your_admin_email>"
+    url: "http://<your_jenkins_server_ip>:8080"
+    adminAddress: "<your_admin_password>"
