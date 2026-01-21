@@ -1,0 +1,67 @@
+pipeline {
+    agent { label 'teuthology-agent' }
+    
+    environment {
+        SCRIPT_DIR = '/home/ubuntu/teuthology'
+        VIRTUALENV_PATH = '/home/ubuntu/teuthology/virtualenv'
+        OVERRIDE_YAML = '/home/ubuntu/override.yaml'
+        LOG_DIR = '/home/ubuntu/archive/logs'
+    }
+    
+    stages {
+        stage('Setup Environment') {
+            steps {
+                script {
+                    // Create log directory if it doesn't exist
+                    sh "mkdir -p ${LOG_DIR}"
+                    
+                    // Generate log filename with date
+                    def dateStr = sh(script: 'date +%Y%m%d', returnStdout: true).trim()
+                    env.LOG_FILE = "${LOG_DIR}/cron-smoke-${dateStr}.log"
+                    
+                    echo "Log file: ${env.LOG_FILE}"
+                    echo "Script directory: ${SCRIPT_DIR}"
+                    echo "Override YAML: ${OVERRIDE_YAML}"
+                }
+            }
+        }
+        
+        stage('Run Daily Smoke Suite') {
+            steps {
+                script {
+                    dir(SCRIPT_DIR) {
+                        // Activate virtualenv and run the script
+                        // Equivalent to: source virtualenv/bin/activate && cd /home/ubuntu/teuthology && run-daily-smoke.sh override.yaml
+                        // Note: nohup and & are not needed in Jenkins as it manages the process lifecycle
+                        // source ${VIRTUALENV_PATH}/bin/activate && \\
+                        // ./run-daily-smoke.sh ${OVERRIDE_YAML}
+                        // sh """
+                        //     #!/bin/bash
+                        //     source ${VIRTUALENV_PATH}/bin/activate && \\
+                        //     ./teuthology_cadence.sh ${OVERRIDE_YAML}
+                        // """
+                        sh '''bash -c "source /home/ubuntu/teuthology/virtualenv/bin/activate && \\
+                        /home/ubuntu/teuthology/teuthology-cadence.sh ${OVERRIDE_YAML}"'''
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                // The run-daily-smoke.sh script creates its own log file
+                // We also capture Jenkins console output automatically
+                echo "Daily smoke suite execution completed"
+                echo "Check Jenkins console output and ${LOG_DIR} for detailed logs"
+            }
+        }
+        success {
+            echo "✓ Daily smoke suite completed successfully"
+        }
+        failure {
+            echo "✗ Daily smoke suite completed with failures"
+        }
+    }
+}
