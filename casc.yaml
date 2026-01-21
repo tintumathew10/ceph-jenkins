@@ -39,9 +39,11 @@ jenkins:
             pullStrategy: PULL_NEVER
             dockerTemplateBase:
               image: "ceph-jenkins-seed-agent:latest"
-              user: "jenkins"
+              dockerCommand: "sleep infinity"
+              tty: true
             connector:
-              attach: {}
+              attach:
+                user: "jenkins"
           - name: "ceph-build-agent"
             labelString: "ceph-build-agent"
             remoteFs: "/home/jenkins"
@@ -49,9 +51,11 @@ jenkins:
             pullStrategy: PULL_NEVER
             dockerTemplateBase:
               image: "ceph-jenkins-build-agent:latest"
-              user: "jenkins"
+              dockerCommand: "sleep infinity"
+              tty: true
             connector:
-              attach: {}
+              attach:
+                user: "jenkins"
 
 security:
   globalJobDslSecurityConfiguration:
