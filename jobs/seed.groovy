@@ -8,9 +8,8 @@ job('seed-job') {
         numToKeep(10)
     }
 
-    // Label to restrict where the job can run
-    // TODO: Update this label to `infra` node
-    label('controller')
+    // Agent node label
+    label('ceph-seed-agent')
 
     // Repo and Branch parameters
     parameters {

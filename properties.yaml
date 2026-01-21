@@ -5,26 +5,6 @@ jenkins:
         - id: "admin"
           password: "<your_admin_password>"
 
-  nodes:
-    - permanent:
-        name: "ceph-agent"
-        launcher:
-          ssh:
-            host: "<ceph_agent_ip_address>"
-
-credentials:
-  system:
-    domainCredentials:
-      - credentials:
-          - basicSSHUserPrivateKey:
-              id: "ceph-agent-ssh-key"
-              privateKeySource:
-                directEntry:
-                  privateKey: |
-                    -----BEGIN OPENSSH PRIVATE KEY-----
-                    ... <your_full_private_key> ...
-                    -----END OPENSSH PRIVATE KEY-----
-
 unclassified:
   location:
     url: "http://<your_jenkins_server_ip>:8080"

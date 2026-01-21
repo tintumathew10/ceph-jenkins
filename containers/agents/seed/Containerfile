@@ -1,0 +1,32 @@
+# Base Fedora 39 image
+FROM registry.fedoraproject.org/fedora:39
+
+# Build Arguments
+ARG AGENT_UID=1000
+ARG AGENT_GID=1001
+ARG AGENT_USER=jenkins
+ARG AGENT_GROUP=jenkins-bridge
+
+# Install Core Dependencies
+RUN dnf install -y \
+    java-17-openjdk-devel \
+    git \
+    which \
+    && dnf clean all
+
+# Create User and Group
+RUN groupadd -g ${AGENT_GID} ${AGENT_GROUP} && \
+    useradd -u ${AGENT_UID} -g ${AGENT_GID} -m -s /bin/bash ${AGENT_USER}
+
+# Set Up Workspace
+WORKDIR /home/${AGENT_USER}
+RUN mkdir -p /home/${AGENT_USER}/workspace && \
+    chown -R ${AGENT_USER}:${AGENT_GROUP} /home/${AGENT_USER}
+
+# Final Configuration
+USER ${AGENT_USER}
+
+# Seed job description labels
+LABEL description="Jenkins Seed Job Agent for Pipelines" \
+      base_image="fedora:39" \
+      purpose="Job DSL processing"

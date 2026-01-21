@@ -1,6 +1,6 @@
 pipeline {
     agent {
-        label "ceph-podman-agent"
+        label "ceph-build-agent"
     }
     stages {
         stage("Environment Check") {

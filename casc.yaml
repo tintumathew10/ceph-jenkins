@@ -1,8 +1,7 @@
 jenkins:
   systemMessage: "Ceph Jenkins Controller"
-  numExecutors: 1
+  numExecutors: 0
   mode: EXCLUSIVE
-  labelString: "controller"
 
   # Security configuration
   securityRealm:
@@ -24,50 +23,35 @@ jenkins:
             permissions:
               - "Overall/Read"
 
-  # Agent node configuration
-  nodes:
-    - permanent:
-        name: "ceph-agent"
-        remoteFS: "/home/jenkins"
-        labelString: "teuthology"
-        mode: NORMAL
-        numExecutors: 10
-        launcher:
-          ssh:
-            port: 22
-            credentialsId: "ceph-agent-ssh-key"
-            sshHostKeyVerificationStrategy: "nonVerifyingKeyVerificationStrategy"
-
   # Cloud agent configuration
   clouds:
     - docker:
         name: "podman-cloud"
-        containerCap: 5
+        containerCap: 10
         dockerApi:
           dockerHost:
             uri: "unix:///var/run/podman.sock"
         templates:
-          - name: "ceph-agent"
-            labelString: "ceph-podman-agent"
+          - name: "ceph-seed-agent"
+            labelString: "ceph-seed-agent"
             remoteFs: "/home/jenkins"
             mode: EXCLUSIVE
+            pullStrategy: PULL_NEVER
             dockerTemplateBase:
-              image: "ceph-jenkins-agent:latest"
-              pullStrategy: PULL_NEVER
+              image: "ceph-jenkins-seed-agent:latest"
               user: "jenkins"
             connector:
               attach: {}
-
-# Credentials configuration
-credentials:
-  system:
-    domainCredentials:
-      - credentials:
-          - basicSSHUserPrivateKey:
-              scope: SYSTEM
-              id: "ceph-agent-ssh-key"
-              username: "jenkins"
-              description: "SSH Key for agent nodes"
+          - name: "ceph-build-agent"
+            labelString: "ceph-build-agent"
+            remoteFs: "/home/jenkins"
+            mode: EXCLUSIVE
+            pullStrategy: PULL_NEVER
+            dockerTemplateBase:
+              image: "ceph-jenkins-build-agent:latest"
+              user: "jenkins"
+            connector:
+              attach: {}
 
 security:
   globalJobDslSecurityConfiguration:

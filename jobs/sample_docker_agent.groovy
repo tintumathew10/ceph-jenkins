@@ -1,5 +1,5 @@
 pipelineJob("sample-docker-pipeline") {
-    displayName('Test: Sample Docker Agent Pipeline')
+    displayName("Test: Sample Docker Agent Pipeline")
     description("A sample job to verify the Docker agent environment.")
     
     definition {
@@ -13,5 +13,6 @@ pipelineJob("sample-docker-pipeline") {
                 }
             }
             scriptPath("jobs/pipelines/sample_docker_agent/Jenkinsfile")
+        }
     }
 }

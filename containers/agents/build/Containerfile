@@ -1,0 +1,35 @@
+# Base Fedora 39 image
+FROM registry.fedoraproject.org/fedora:39
+
+# Build Arguments
+ARG AGENT_UID=1000
+ARG AGENT_GID=1001
+ARG AGENT_USER=jenkins
+ARG AGENT_GROUP=jenkins-bridge
+
+# Install Ceph Build Agent Dependencies
+RUN dnf install -y \
+    java-17-openjdk-devel \
+    git \
+    python3 \
+    ceph-common \
+    which \
+    shadow-utils \
+    && dnf clean all
+
+# Create User and Group Dynamically
+RUN groupadd -g ${AGENT_GID} ${AGENT_GROUP} && \
+    useradd -u ${AGENT_UID} -g ${AGENT_GID} -m -s /bin/bash ${AGENT_USER}
+
+# Set Up the Build Workspace
+WORKDIR /home/${AGENT_USER}
+RUN mkdir -p /home/${AGENT_USER}/workspace && \
+    chown -R ${AGENT_USER}:${AGENT_GROUP} /home/${AGENT_USER}
+
+# Final Permissions and Context
+USER ${AGENT_USER}
+
+# Build job description labels
+LABEL description="Ceph Build Jenkins Agent" \
+      base_image="fedora:39" \
+      purpose="Ceph builds processing"
