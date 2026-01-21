@@ -1,0 +1,460 @@
+pipeline {
+    agent { label 'teuthology-agent' }
+    
+    options {
+        timestamps()
+        timeout(time: 12, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    environment {
+        SCRIPT_DIR = '/home/ubuntu/teuthology'
+        VIRTUALENV_PATH = '/home/ubuntu/teuthology/virtualenv'
+        OVERRIDE_YAML = '/home/ubuntu/override.yaml'
+        LOG_DIR = "${SCRIPT_DIR}/logs"
+    }
+    
+   stages {
+        stage('Initialize') {
+            steps {
+                script {
+                    env.LOG_FILE = "${LOG_DIR}/daily-smoke-${new Date().format('yyyyMMdd-HHmmss')}.log"
+                    sh "mkdir -p ${LOG_DIR}"
+                    dir(env.SCRIPT_DIR) {
+                        sh "pwd"
+                    }
+                    log("======== Starting daily smoke suite execution ========")
+                    log("Log file: ${env.LOG_FILE}")
+                }
+            }
+        }
+        
+        stage('Determine Branches') {
+            steps {
+                script {
+                    // Get day of week (1=Monday, 7=Sunday)
+                    def dayOfWeek = sh(script: 'date +%u', returnStdout: true).trim().toInteger()
+                    def dayName = sh(script: 'date +%A', returnStdout: true).trim()
+                    
+                    env.RUN_TENTACLE = (dayOfWeek == 1 || dayOfWeek == 3) ? 'true' : 'false'
+                    env.DAY_NAME = dayName
+                    
+                    if (env.RUN_TENTACLE == 'true') {
+                        log("Today is ${dayName} - will run both tentacle and main branches")
+                    } else {
+                        log("Today is ${dayName} - will run main branch only (tentacle runs only on Monday and Wednesday)")
+                    }
+                }
+            }
+        }
+        
+        stage('Run Smoke Suite') {
+            steps {
+                script {
+                    if (env.RUN_TENTACLE == 'true') {
+                        log("Starting smoke suite for 'tentacle' branch...")
+                        if (runSmokeForBranch('tentacle')) {
+                            log("Smoke suite for 'tentacle' branch completed")
+                        } else {
+                            log("Smoke suite for 'tentacle' branch had errors")
+                        }
+                        log("Starting smoke suite for 'main' branch (tentacle run has completed)...")
+                        if (runSmokeForBranch('main')) {
+                            log("Smoke suite for 'main' branch completed")
+                        } else {
+                            log("Smoke suite for 'main' branch had errors")
+                        }
+                    } else {
+                        log("Starting smoke suite for 'main' branch...")
+                        if (runSmokeForBranch('main')) {
+                            log("Smoke suite for 'main' branch completed")
+                        } else {
+                            log("Smoke suite for 'main' branch had errors")
+                        }
+                    }
+                    log("Daily smoke suite execution completed")
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                if (env.LOG_FILE) {
+                    if (fileExists(env.LOG_FILE)) {
+                        def logFileName = env.LOG_FILE.split('/')[-1]
+                        def workspaceLogFile = "${env.WORKSPACE}/${logFileName}"
+                        
+                        // Copy the log file to workspace
+                        def copyExitCode = sh(
+                            script: "cp '${env.LOG_FILE}' '${workspaceLogFile}' 2>&1",
+                            returnStatus: true
+                        )
+                        
+                        if (copyExitCode == 0 && fileExists(workspaceLogFile)) {
+                            // Archive using workspace-relative path
+                            archiveArtifacts artifacts: logFileName, allowEmptyArchive: true
+                            echo "Successfully archived log file: ${logFileName}"
+                        } else {
+                            echo "WARNING: Could not copy log file to workspace (exit code: ${copyExitCode})"
+                            // Try to archive the original file as a fallback, but this may fail
+                            try {
+                                archiveArtifacts artifacts: "${env.LOG_FILE}", allowEmptyArchive: true
+                            } catch (Exception e) {
+                                echo "ERROR: Could not archive log file: ${e.message}"
+                            }
+                        }
+                    } else {
+                        echo "Log file not found: ${env.LOG_FILE}"
+                    }
+                } else {
+                    echo "LOG_FILE environment variable not set"
+                }
+            }
+        }
+        success {
+            echo "Daily smoke suite execution completed successfully"
+        }
+        failure {
+            echo "Daily smoke suite execution completed with failures"
+        }
+    }
+}
+
+def log(message) {
+    def timestamp = sh(script: "date '+%Y-%m-%d %H:%M:%S'", returnStdout: true).trim()
+    def logMessage = "[${timestamp}] ${message}"
+    echo logMessage
+    sh "echo '${logMessage}' >> ${env.LOG_FILE}"
+}
+
+def constructRunName(suite, timestamp, cephBranch) {
+    // def user = sh(script: 'whoami', returnStdout: true).trim()
+    def user = "test"
+    def kernelBranch = "distro"
+    def worker = "openstack"
+    def flavor = "default"
+    
+    suite = suite.replaceAll("/", ":")
+    return "${user}-${timestamp}-${suite}-${cephBranch}-${kernelBranch}-${flavor}-${worker}"
+}
+
+def runSmokeForBranch(branch) {
+    dir(env.SCRIPT_DIR) {
+        log("Starting smoke suite for branch: ${branch}")
+        
+        // Get shaman_id for the branch
+        def shamanId
+        def tmpErr = "${env.WORKSPACE}/tmp_err_${branch}_${System.currentTimeMillis()}.txt"
+        try {
+            def exitCode = sh(
+                script: """
+                    ${VIRTUALENV_PATH}/bin/python3 getUpstreamBuildDetails.py \\
+                        --branch ${branch} \\
+                        --platform ubuntu-jammy-default,centos-9-default \\
+                        --arch x86_64 2>${tmpErr}
+                """,
+                returnStdout: true,
+                returnStatus: true
+            )
+            
+            if (exitCode != 0) {
+                def errorMsg = readFile(file: tmpErr)
+                log("ERROR: Failed to get upstream build details for branch ${branch}:")
+                sh "echo '${errorMsg}' >> ${env.LOG_FILE}"
+                sh "rm -f ${tmpErr}"
+                return false
+            }
+            
+            shamanId = sh(
+                script: """
+                    ${VIRTUALENV_PATH}/bin/python3 getUpstreamBuildDetails.py \\
+                        --branch ${branch} \\
+                        --platform ubuntu-jammy-default,centos-9-default \\
+                        --arch x86_64
+                """,
+                returnStdout: true
+            ).trim()
+            
+            sh "rm -f ${tmpErr}"
+            
+            if (!shamanId) {
+                log("ERROR: Failed to get upstream build details for branch ${branch}")
+                return false
+            }
+            
+            log("Using shaman build id for branch ${branch}: ${shamanId}")
+        } catch (Exception e) {
+            log("ERROR: Exception getting shaman_id for branch ${branch}: ${e.message}")
+            sh "rm -f ${tmpErr}"
+            return false
+        }
+        
+        // Upload shaman_id to remote server
+        try {
+            def dateStr = sh(script: 'date "+%Y-%m-%d"', returnStdout: true).trim()
+            sh """
+                sshpass -p "admin" ssh -o StrictHostKeyChecking=no cloud-user@10.0.196.233 \\
+                    "sudo mkdir -p /data/scheduler/cron && echo '${shamanId}' | sudo tee /data/scheduler/cron/${branch}-${dateStr} > /dev/null" 2>&1 | tee -a ${env.LOG_FILE}
+            """
+        } catch (Exception e) {
+            log("WARNING: Failed to upload shaman_id: ${e.message}")
+        }
+        
+        // Unlock targets before running
+        log("Unlocking targets...")
+        // List targets - only stdout goes to file (for YAML), stderr goes to log
+        def listExitCode = sh(
+            script: """
+                ${VIRTUALENV_PATH}/bin/teuthology-lock --list-targets --owner scheduled_ubuntu@teuth-teuthology > ~/locked_targets 2>> ${env.LOG_FILE}
+            """,
+            returnStatus: true
+        )
+        if (listExitCode != 0) {
+            log("WARNING: Failed to list targets, continuing anyway...")
+        }
+        
+        // Unlock targets - log both stdout and stderr
+        def unlockExitCode = sh(
+            script: """
+                ${VIRTUALENV_PATH}/bin/teuthology-lock --owner scheduled_ubuntu@teuth-teuthology --unlock -t ~/locked_targets -vvv >> ${env.LOG_FILE} 2>&1
+            """,
+            returnStatus: true
+        )
+        if (unlockExitCode != 0) {
+            log("WARNING: Failed to unlock targets, continuing anyway...")
+        }
+        
+        // Smoke suite configuration
+        def suite = "smoke"
+        def seed = 8446
+        
+        log("Starting smoke suite for branch ${branch} with seed=${seed}")
+        
+        // Capture timestamp
+        def timestamp = sh(script: 'date "+%Y-%m-%d_%H:%M:%S"', returnStdout: true).trim()
+        
+        // Execute teuthology-suite and capture output to extract run name
+        def suiteOutput
+        def suiteOutputFile = "${env.WORKSPACE}/suite_output_${branch}_${System.currentTimeMillis()}.txt"
+        log("DEBUG: Suite output file path: ${suiteOutputFile}")
+        // Ensure workspace directory exists
+        sh "mkdir -p '${env.WORKSPACE}'"
+        
+        try {
+            def exitCode = sh(
+                script: """
+                    cd '${env.SCRIPT_DIR}' && \\
+                    (PYTHONUNBUFFERED=1 ${VIRTUALENV_PATH}/bin/teuthology-suite \\
+                        --suite "${suite}" \\
+                        --machine-type openstack \\
+                        --ceph "${branch}" \\
+                        --ceph-repo https://github.com/ceph/ceph \\
+                        --priority 50 \\
+                        --force-priority \\
+                        --sha1 ${shamanId} \\
+                        --owner "test" \\
+                        ${OVERRIDE_YAML} > '${suiteOutputFile}' 2>&1; echo \$? > '${suiteOutputFile}.exitcode') && \\
+                    sync
+                """,
+                returnStatus: true
+            )
+            
+            // Read output file if it exists
+            if (fileExists(suiteOutputFile)) {
+                try {
+                    suiteOutput = readFile(file: suiteOutputFile)
+                    if (suiteOutput) {
+                        suiteOutput = suiteOutput.trim()
+                    }
+                    sh "cat '${suiteOutputFile}' >> '${env.LOG_FILE}'"
+                } catch (Exception readEx) {
+                    log("WARNING: Could not read suite output file: ${readEx.message}")
+                    suiteOutput = null
+                }
+            } else {
+                log("WARNING: Suite output file does not exist: ${suiteOutputFile}")
+                // Try to capture any error output that might have been written elsewhere
+                def errorCheck = sh(
+                    script: "ls -la '${env.WORKSPACE}'/*.txt 2>&1 | head -5 || true",
+                    returnStdout: true
+                ).trim()
+                log("DEBUG: Files in workspace: ${errorCheck}")
+                suiteOutput = null
+            }
+            
+            // Read the actual exit code from the file
+            def actualExitCode = 0
+            def exitCodeFile = "${suiteOutputFile}.exitcode"
+            if (fileExists(exitCodeFile)) {
+                try {
+                    def exitCodeStr = readFile(file: exitCodeFile).trim()
+                    actualExitCode = exitCodeStr.toInteger()
+                } catch (Exception e) {
+                    log("WARNING: Could not read exit code file: ${e.message}")
+                    actualExitCode = exitCode // Fall back to sh step exit code
+                }
+            } else {
+                actualExitCode = exitCode // Fall back to sh step exit code
+            }
+            
+            if (actualExitCode != 0) {
+                log("ERROR: Failed to schedule smoke suite for branch ${branch} (exit code: ${actualExitCode})")
+                if (suiteOutput) {
+                    log("Command output: ${suiteOutput}")
+                }
+                sh "rm -f ${suiteOutputFile} ${exitCodeFile}"
+                return false
+            }
+            
+            sh "rm -f ${suiteOutputFile} ${exitCodeFile}"
+        } catch (Exception e) {
+            log("ERROR: Exception running teuthology-suite: ${e.message}")
+            def exitCodeFile = "${suiteOutputFile}.exitcode"
+            sh "rm -f ${suiteOutputFile} ${exitCodeFile}"
+            return false
+        }
+
+        // Extract run name from teuthology-suite output
+        def runName
+        def pattern = 'Job scheduled with name '
+        def nameStart = suiteOutput?.indexOf(pattern)
+        
+        if (nameStart >= 0) {
+            def searchStart = nameStart + pattern.length()
+            // Find the end of the run name (space, newline, " and", or carriage return)
+            def delimiters = [' ', '\n', ' and', '\r']
+            def indices = delimiters.collect { suiteOutput.indexOf(it, searchStart) }
+                                    .findAll { it >= 0 }
+            def nameEnd = suiteOutput.length()
+            for (def idx in indices) {
+                if (idx < nameEnd) {
+                    nameEnd = idx
+                }
+            }
+            
+            if (nameEnd > searchStart) {
+                runName = suiteOutput.substring(searchStart, nameEnd).trim()
+            }
+        }
+
+        if (!runName) {
+            log("WARNING: Could not extract run name from teuthology-suite output, constructing it...")
+            runName = constructRunName(suite, timestamp, branch)
+        }
+        
+        log("Using run name: ${runName}")
+        
+        // Wait for run to be registered
+        log("Waiting 10 seconds for run to be registered on server...")
+        sleep(time: 10, unit: 'SECONDS')
+        
+        // Verify run exists
+        log("Verifying run exists on server...")
+        def runExists = false
+        def maxAttempts = 6
+        def attempt = 0
+        
+        while (attempt < maxAttempts) {
+            def verifyOutputFile = "${env.WORKSPACE}/verify_run_${branch}_${System.currentTimeMillis()}.txt"
+            def exitCode = sh(
+                script: """
+                    ${VIRTUALENV_PATH}/bin/python3 <<EOF > ${verifyOutputFile} 2>&1
+from teuthology.report import ResultsReporter
+import sys
+try:
+    reporter = ResultsReporter()
+    jobs = reporter.get_jobs('${runName}', fields=['job_id'])
+    if jobs is not None and len(jobs) > 0:
+        print("Run found with {} jobs".format(len(jobs)))
+        sys.exit(0)
+    else:
+        print("Run found but has no jobs")
+        sys.exit(1)
+except Exception as e:
+    error_msg = str(e)
+    if '404' in error_msg or 'Not Found' in error_msg:
+        print("404 Not Found: {}".format(error_msg))
+        sys.exit(1)
+    else:
+        print("Error checking run: {}".format(error_msg))
+        sys.exit(1)
+EOF
+                """,
+                returnStatus: true
+            )
+            
+            // Log verification attempt output for debugging
+            if (fileExists(verifyOutputFile)) {
+                def verifyOutput = readFile(file: verifyOutputFile)
+                if (verifyOutput && verifyOutput.trim()) {
+                    log("Verification attempt ${attempt + 1}: ${verifyOutput.trim()}")
+                }
+                sh "rm -f ${verifyOutputFile}"
+            }
+            
+            if (exitCode == 0) {
+                runExists = true
+                break
+            }
+            
+            attempt++
+            if (attempt < maxAttempts) {
+                log("Run not found yet, waiting 5 seconds... (attempt ${attempt}/${maxAttempts})")
+                sleep(time: 5, unit: 'SECONDS')
+            }
+        }
+        
+        if (!runExists) {
+            log("ERROR: Could not verify run '${runName}' exists after ${maxAttempts} attempts.")
+            log("The run may not have been scheduled properly or may have a different name.")
+            return false
+        } else {
+            log("Run verified on server: ${runName}")
+        }
+        
+        // Wait for suite to complete using teuthology-wait
+        log("Waiting for smoke suite (branch: ${branch}, run: ${runName}) to complete using teuthology-wait...")
+        def waitOutputFile = "${env.WORKSPACE}/teuthology_wait_${branch}_${System.currentTimeMillis()}.txt"
+        def waitExitCode = sh(
+            script: "${VIRTUALENV_PATH}/bin/teuthology-wait --run ${runName} > ${waitOutputFile} 2>&1",
+            returnStatus: true
+        )
+        
+        // Read and log the wait output
+        def waitOutput = ""
+        if (fileExists(waitOutputFile)) {
+            try {
+                waitOutput = readFile(file: waitOutputFile)
+                echo "teuthology-wait output:"
+                echo waitOutput
+            } catch (Exception e) {
+                log("WARNING: Could not read teuthology-wait output file: ${e.message}")
+            }
+            sh "rm -f ${waitOutputFile}"
+        } else {
+            log("WARNING: teuthology-wait output file not found: ${waitOutputFile}")
+        }
+        
+        if (waitExitCode != 0) {
+            // Check if the error is a 404 (run not found)
+            if (waitOutput && (waitOutput.contains('404') || waitOutput.contains('Not Found'))) {
+                log("ERROR: Run '${runName}' not found on server (404 error)")
+                log("This may indicate the run was not properly scheduled or has a different name.")
+                log("teuthology-wait output: ${waitOutput}")
+                return false
+            } else {
+                log("WARNING: Smoke suite for branch ${branch} completed with failures or errors")
+                log("teuthology-wait exit code: ${waitExitCode}")
+                if (waitOutput) {
+                    log("teuthology-wait output: ${waitOutput}")
+                }
+                return false
+            }
+        } else {
+            log("Smoke suite for branch ${branch} completed successfully (teuthology-wait confirmed completion)")
+            return true
+        }
+    }
+}

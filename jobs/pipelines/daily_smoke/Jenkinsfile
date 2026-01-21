@@ -1,0 +1,93 @@
+pipeline {
+    agent { label 'teuthology-agent' }
+    
+    options {
+        timestamps()
+        timeout(time: 12, unit: 'HOURS')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+    }
+
+    environment {
+        SCRIPT_DIR = '/home/ubuntu/teuthology'
+        VIRTUALENV_PATH = '/home/ubuntu/teuthology/virtualenv'
+        OVERRIDE_YAML = '/home/ubuntu/override.yaml'
+        LOG_DIR = "${SCRIPT_DIR}/logs"
+    }
+    
+   stages {
+        stage('Initialize') {
+            steps {
+                script {
+                    env.LOG_FILE = "${LOG_DIR}/daily-smoke-${new Date().format('yyyyMMdd-HHmmss')}.log"
+                    echo "Log file: ${env.LOG_FILE}"
+                }
+            }
+        }
+        
+        stage('Run Smoke Suite') {
+            steps {
+                dir('jobs/pipelines/daily_smoke') {
+                    script {
+                        def branch = params.BRANCH ?: 'main'
+                        def cloudType = params.CLOUD_TYPE ?: 'openstack'
+                        echo "Starting smoke suite for branch '${branch}' (cloud: ${cloudType})..."
+                        def exitCode = sh(
+                            script: "LOG_FILE='${env.LOG_FILE}' PLATFORM='${params.PLATFORM}' ARCH='${params.ARCH}' CLOUD_TYPE='${cloudType}' bash run_smoke_for_branch.sh '${branch}'",
+                            returnStatus: true
+                        )
+                        if (exitCode == 0) {
+                            echo "Smoke suite for '${branch}' branch completed"
+                        } else {
+                            echo "Smoke suite for '${branch}' branch had errors"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            script {
+                if (env.LOG_FILE && fileExists(env.LOG_FILE)) {
+                    def logFileName = env.LOG_FILE.split('/')[-1]
+                    def copied = sh(script: "cp '${env.LOG_FILE}' '${env.WORKSPACE}/${logFileName}'", returnStatus: true) == 0
+                    if (copied) {
+                        archiveArtifacts artifacts: logFileName, allowEmptyArchive: true
+                        echo "Archived log file: ${logFileName}"
+                    } else {
+                        echo "WARNING: Could not copy log file to workspace"
+                    }
+                } else {
+                    echo env.LOG_FILE ? "Log file not found: ${env.LOG_FILE}" : "LOG_FILE not set"
+                }
+            }
+        }
+        success {
+            echo "Daily smoke suite execution completed successfully"
+        }
+        failure {
+            echo "Daily smoke suite execution completed with failures"
+            dir('jobs/pipelines/daily_smoke') {
+                script {
+                    echo "Running rerun of failed/dead smoke jobs..."
+                    def rerunCode = sh(
+                        script: """
+                            export OVERRIDE_YAML='${env.OVERRIDE_YAML}'
+                            export VIRTUALENV_PATH='${env.VIRTUALENV_PATH}'
+                            export PLATFORM='${params.PLATFORM ?: 'ubuntu-jammy-default,centos-9-default'}'
+                            export ARCH='${params.ARCH ?: 'x86_64'}'
+                            bash rerun_failed_smoke.sh
+                        """,
+                        returnStatus: true
+                    )
+                    if (rerunCode == 0) {
+                        echo "Rerun of failed smoke jobs completed"
+                    } else {
+                        echo "Rerun of failed smoke jobs finished with exit code ${rerunCode}"
+                    }
+                }
+            }
+        }
+    }
+}
