@@ -27,7 +27,7 @@ podman build \
     --build-arg AGENT_GID=$SOCKET_GID \
     --build-arg AGENT_GROUP=$HOST_GROUP \
     --build-arg AGENT_UID=$HOST_UID \
-    -t ceph-jenkins-centos9-agent ./containers/agents/build/centos-9
+    -t ceph-jenkins-centos9-agent ./containers/agents/build/centos/9.stream
 
 echo "Building Ubuntu Noble Build Agent (with dynamic permissions)..."
 podman build \

@@ -112,7 +112,7 @@ pipeline {
                         if ("centos9" in params.DISTRO) {
                             env.DISTRO_VERSION = "9"
                             env.BUILD_RPM = "${WORKSPACE}/containers/agents/build/" +
-                                "centos-9/build_rpm"
+                                "centos/build_rpm"
                         } else {
                             error "Unsupported distro: ${params.DISTRO}"
                         }
