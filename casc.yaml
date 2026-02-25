@@ -61,6 +61,8 @@ jenkins:
               memorySwap: -1
               environment:
                 - "ALLOCATED_CPUS=4"
+              mounts:
+                - "type=volume,source=jenkins_shared_workspace,destination=/home/jenkins/workspace"
             connector:
               attach:
                 user: "jenkins"
@@ -78,6 +80,8 @@ jenkins:
               memorySwap: -1
               environment:
                 - "ALLOCATED_CPUS=4"
+              mounts:
+                - "type=volume,source=jenkins_shared_workspace,destination=/home/jenkins/workspace"
             connector:
               attach:
                 user: "jenkins"
@@ -95,6 +99,8 @@ jenkins:
               memorySwap: -1
               environment:
                 - "ALLOCATED_CPUS=4"
+              mounts:
+                - "type=volume,source=jenkins_shared_workspace,destination=/home/jenkins/workspace"
             connector:
               attach:
                 user: "jenkins"

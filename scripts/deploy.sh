@@ -1,5 +1,27 @@
 #!/bin/bash
 
+# --- Default Configuration ---
+JENKINS_CONFIG_DIR="$HOME/jenkins_config"
+JENKINS_PROPERTIES="$JENKINS_CONFIG_DIR/properties.yaml"
+
+# --- Volume Configuration ---
+SHARED_WORKSPACE_VOLUME="jenkins_shared_workspace"
+SHARED_WORKSPACE_PATH="$JENKINS_CONFIG_DIR/shared_workspace"
+JENKINS_HOME_VOLUME="jenkins_home"
+JENKINS_HOME_PATH="$JENKINS_CONFIG_DIR/jenkins_home"
+
+# --- Create Jenkins Config Directory ---
+if [ ! -d "$JENKINS_CONFIG_DIR" ]; then
+    echo "Jenkins config directory does not exist."
+    exit 1
+fi
+
+# --- Check if Jenkins Properties File Exists ---
+if [ ! -f "$JENKINS_PROPERTIES" ]; then
+    echo "Jenkins properties file does not exist."
+    exit 1
+fi
+
 # --- Podman Configuration ---
 SOCKET_PATH="/run/user/$(id -u)/podman/podman.sock"
 SOCKET_GID=$(stat -c '%g' $SOCKET_PATH)
@@ -73,6 +95,34 @@ if [ ${#MISSING[@]} -gt 0 ]; then
         exit 1
 fi
 
+# --- Create Jenkins Home Volume ---
+if podman volume exists jenkins_home 2>/dev/null; then
+    echo "Jenkins home volume already exists."
+else
+    echo "Creating jenkins home directory..."
+    mkdir -p "$JENKINS_HOME_PATH"
+
+    echo "Creating jenkins home volume..."
+    podman volume create jenkins_home \
+        --opt type=dir \
+        --opt device=$JENKINS_HOME_PATH \
+        --opt o=bind
+fi
+
+# --- Create Shared Workspace Volume ---
+if podman volume exists jenkins_shared_workspace 2>/dev/null; then
+    echo "Shared workspace volume already exists."
+else
+    echo "Creating shared workspace directory..."
+    mkdir -p "$SHARED_WORKSPACE_PATH"
+
+    echo "Creating shared workspace volume..."
+    podman volume create jenkins_shared_workspace \
+        --opt type=dir \
+        --opt device=$SHARED_WORKSPACE_PATH \
+        --opt o=bind
+fi
+
 # --- Deploy Jenkins Server ---
 echo "Launching Jenkins Controller..."
 podman run -d \
@@ -88,9 +138,9 @@ podman run -d \
        -Djenkins.install.runSetupWizard=false \
        -Djava.awt.headless=true \
        -Dcasc.jenkins.config=/var/jenkins_home/casc_configs/" \
-    -v jenkins_home:/var/jenkins_home \
+    -v $JENKINS_HOME_VOLUME:/var/jenkins_home \
     -v $(pwd)/casc.yaml:/var/jenkins_home/casc_configs/01-casc.yaml:z \
-    -v $(pwd)/properties.yaml:/var/jenkins_home/casc_configs/02-properties.yaml:z \
+    -v $JENKINS_CONFIG_DIR/properties.yaml:/var/jenkins_home/casc_configs/02-properties.yaml:z \
     -v $(pwd)/jobs/seed.groovy:/var/jenkins_home/seed.groovy:z \
     -v $SOCKET_PATH:/var/run/podman.sock:z \
     --group-add $SOCKET_GID \

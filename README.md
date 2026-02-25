@@ -17,41 +17,47 @@ Before deploying the containerized controller, ensure the following requirements
     * `properties.yaml`: Actual environment configurations.
     * `jobs/seed.groovy`: The initial script to bootstrap the job-processing logic.
     * `scripts`: `Bash`/`Python` scripts to perform specific operations.
+    * `$HOME/jenkins_config`: Jenkins configs (properties.yaml, jenkins_home & shared_workspace)
 
 ### Deployment Steps
 
 Deployment follows "Configuration as Code" workflow to maintain the repository as the single source of truth.
 
-1. **Update Properties:** Fill out `properties.yaml` with your real-world Jenkins configs. This "hydrates" the `casc.yaml` template with your actual cluster details and secrets.
+1. **Create Config Directory**: Create Jenkins home directory for Jenkins config and shared workspace
+    ```sh
+    mkdir -p $HOME/jenkins_config
+    ```
 
-2. **Start socket service:** This will enable and start the socket for user.
+2. **Create Properties:** Create `$HOME/jenkins_config/properties.yaml` with your real-world Jenkins configs. This "hydrates" the `casc.yaml` template with your actual cluster details and secrets.
+
+3. **Start socket service:** This will enable and start the socket for user.
     ```sh
     systemctl --user enable --now podman.socket
     ```
 
-3. **Verify socket exists:** Verify the socket now exists for user id.
+4. **Verify socket exists:** Verify the socket now exists for user id.
     ```sh
     ls -l /run/user/$(id -u)/podman/podman.sock
     ```
 
-4. **Enable "Linger":** This will keep services running after user logout.
+5. **Enable "Linger":** This will keep services running after user logout.
     ```sh
     sudo loginctl enable-linger $(id -u)
     ```
 
-5. **Set Execute Permissions:** Set execute permissions to `scripts/deploy.sh` script.
+6. **Set Execute Permissions:** Set execute permissions to `scripts/deploy.sh` script.
     ```sh
     chmod +x ./scripts/deploy.sh
     ```
 
-6. **Execute `deploy.sh`:** This script will build controller and agent images and deploys `jenkins-controller` container.
+7. **Execute `deploy.sh`:** This script will build controller and agent images and deploys `jenkins-controller` container.
     ```sh
     ./scripts/deploy.sh
     ```
 
-7. **Bootstrap Jobs:** Upon startup, JCasC will automatically execute `seed.groovy` to create the `Seed Job` job.
+8. **Bootstrap Jobs:** Upon startup, JCasC will automatically execute `seed.groovy` to create the `Seed Job` job.
 
-8. **Process Project Jobs:** Run the `Seed` from the Jenkins UI, providing the relative path to your project's Groovy definitions to generate project-specific pipelines.
+9. **Process Project Jobs:** Run the `Seed` from the Jenkins UI, providing the relative path to your project's Groovy definitions to generate project-specific pipelines.
 
 ### Logging
 

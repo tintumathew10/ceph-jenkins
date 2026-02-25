@@ -20,6 +20,9 @@ pipeline {
     }
 
     environment {
+        // Set shared workspace path
+        SHARED_WS = "/home/jenkins/workspace/${JOB_NAME}/${BUILD_NUMBER}"
+
         // Environment & Variable Setup
         REPO_URL="https://shaman.ceph.com/r/ceph"
 
@@ -27,17 +30,19 @@ pipeline {
         RPM_BUILD_OPTS="${params.RPM_BUILD_OPTS}"
 
         // Set up a build paths for artifacts
-        RPM_BUILDAREA="${WORKSPACE}/rpm"
-        RELEASE_BUILDAREA="${WORKSPACE}/release"
-        CEPH_DIR="${WORKSPACE}/ceph"
-        BUILD_BINARY="${WORKSPACE}/jobs/pipelines/sample_ceph_build_ci/build_binary.sh"
+        RPM_BUILDAREA="${SHARED_WS}/rpm"
+        RELEASE_BUILDAREA="${SHARED_WS}/release"
+        CEPH_DIR="${SHARED_WS}/ceph"
+        BUILD_BINARY="${SHARED_WS}/jobs/pipelines/sample_ceph_build_ci/build_binary.sh"
     }
 
     stages {
         stage("Checkout Pipeline Code") {
             steps {
                 // Pull the Jenkinsfile repository
-                checkout scm
+                dir("${SHARED_WS}") {
+                    checkout scm
+                }
             }
         }
 
@@ -111,7 +116,7 @@ pipeline {
                         // Set distro version based on distro
                         if ("centos9" in params.DISTRO) {
                             env.DISTRO_VERSION = "9"
-                            env.BUILD_RPM = "${WORKSPACE}/containers/agents/build/" +
+                            env.BUILD_RPM = "${SHARED_WS}/containers/agents/build/" +
                                 "centos/build_rpm"
                         } else {
                             error "Unsupported distro: ${params.DISTRO}"
