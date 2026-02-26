@@ -42,6 +42,12 @@ podman build \
     --build-arg GROUP_ID=$SOCKET_GID \
     -t ceph-jenkins-seed-agent ./containers/agents/seed
 
+echo "Building Fedora 39 Build Agent (with dynamic permissions)..."
+podman build \
+    --build-arg USER_ID=$HOST_UID \
+    --build-arg GROUP_ID=$SOCKET_GID \
+    -t ceph-jenkins-fedora39-agent ./containers/agents/build/fedora/39
+
 echo "Building CentOS 9 Build Agent (with dynamic permissions)..."
 podman build \
     --build-arg USER_ID=$HOST_UID \
@@ -73,6 +79,7 @@ echo "Verifying built images..."
 REQUIRED_IMAGES=(
     "ceph-jenkins-controller:latest"
     "ceph-jenkins-seed-agent:latest"
+    "ceph-jenkins-fedora39-agent:latest"
     "ceph-jenkins-centos9-agent:latest"
     "ceph-jenkins-ubuntu-noble-agent:latest"
     "ceph-jenkins-ubuntu-jammy-agent:latest"

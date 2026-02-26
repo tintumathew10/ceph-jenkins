@@ -1,10 +1,13 @@
 #!/bin/bash
 
-set -ex
+# Set strict error handling and pipefail
+set -euxo pipefail
 
 # Create DEB build area
 mkdir -p "${DEB_BUILDAREA}"/{source,binary}
-mkdir -p "${RELEASE_BUILDAREA}"
+
+# Set up a local APT repository structure for the built packages
+mkdir -p "${RELEASE_BUILDAREA}/conf"
 
 # Extract the source tarball into the build area
 tar -xjf "dist/ceph-${VERSION}.tar.bz2" -C "${DEB_BUILDAREA}/source"
@@ -38,11 +41,8 @@ mv "${DEB_BUILDAREA}/source"/*.deb "${DEB_BUILDAREA}/binary/" 2>/dev/null || tru
 mv "${DEB_BUILDAREA}/source"/*.changes "${DEB_BUILDAREA}/binary/" 2>/dev/null || true
 mv "${DEB_BUILDAREA}/source"/*.buildinfo "${DEB_BUILDAREA}/binary/" 2>/dev/null || true
 
-# Set up a local APT repository structure for the built packages
-REPO_DIR="${RELEASE_BUILDAREA}/repo"
-mkdir -p "${REPO_DIR}/conf"
-
-cat <<EOF > "${REPO_DIR}/conf/distributions"
+# Generate the distribution file
+cat <<EOF > "${RELEASE_BUILDAREA}/conf/distributions"
 Origin: Ceph
 Label: Ceph Dev
 Codename: ${DIST}
@@ -54,16 +54,8 @@ EOF
 # Import all .deb files into the repository
 for deb in "${DEB_BUILDAREA}/binary"/*.deb; do
     if [ -f "${deb}" ]; then
-        reprepro -b "${REPO_DIR}" includedeb "${DIST}" "${deb}"
+        reprepro -b "${RELEASE_BUILDAREA}" includedeb "${DIST}" "${deb}"
     fi
 done
 
-# Extract standalone cephadm
-cd "${WORKSPACE}"
-CEPHADM_DEB=$(find "${DEB_BUILDAREA}/binary" -name "cephadm_*.deb" | head -n 1)
-if [ -f "${CEPHADM_DEB}" ]; then
-    dpkg-deb --fsys-tarfile "${CEPHADM_DEB}" | tar -xOf - ./usr/sbin/cephadm > cephadm
-    echo "Extracted cephadm binary to ${WORKSPACE}/cephadm"
-fi
-
-echo "DEB Build and cephadm extraction completed."
+echo "DEB Build completed successfully!"

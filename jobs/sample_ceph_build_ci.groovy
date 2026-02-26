@@ -21,7 +21,7 @@ pipelineJob("sample-ceph-pipeline") {
                 "CEPH_REPO", "https://github.com/ceph/ceph.git", "Ceph repository URL"
             )
             stringParam("CEPH_BRANCH", "main", "Ceph branch to build")
-            stringParam("DISTRO", "centos9", "Distribution to build for")
+            stringParam("DISTRO", "centos9 jammy noble", "Distribution to build for")
             stringParam("ARCH", "x86_64", "Architecture to build for")
             choiceParam("FLAVOR", ["default"], "Build flavor")
             stringParam(
@@ -29,6 +29,7 @@ pipelineJob("sample-ceph-pipeline") {
                 "--with tcmalloc --without selinux --without lto",
                 "Additional RPM build options"
             )
+            stringParam("DEB_BUILD_OPTS", "", "Additional DEB build options")
         }
     }
 }

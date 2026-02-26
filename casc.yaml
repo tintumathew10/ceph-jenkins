@@ -47,6 +47,25 @@ jenkins:
             connector:
               attach:
                 user: "jenkins"
+          - name: "ceph-build-fedora39-agent"
+            labelString: "ceph-build-fedora39-agent"
+            remoteFs: "/home/jenkins"
+            mode: EXCLUSIVE
+            pullStrategy: PULL_NEVER
+            instanceCapStr: "4"
+            dockerTemplateBase:
+              image: "ceph-jenkins-fedora39-agent:latest"
+              tty: true
+              cpuShares: 4096
+              memoryLimit: 16384
+              memorySwap: -1
+              environment:
+                - "ALLOCATED_CPUS=4"
+              mounts:
+                - "type=volume,source=jenkins_shared_workspace,destination=/home/jenkins/workspace"
+            connector:
+              attach:
+                user: "jenkins"
           - name: "ceph-build-centos9-agent"
             labelString: "ceph-build-centos9-agent"
             remoteFs: "/home/jenkins"

@@ -1,9 +1,5 @@
 pipeline {
-    agent {
-        node {
-            label "ceph-build-centos9-agent"
-        }
-    }
+    agent none
 
     options {
         // Keep the last 20 builds
@@ -21,7 +17,7 @@ pipeline {
 
     environment {
         // Set shared workspace path
-        SHARED_WS = "/home/jenkins/workspace/${JOB_NAME}/${BUILD_NUMBER}"
+        SHARED_WS="/home/jenkins/workspace/${JOB_NAME}/${BUILD_NUMBER}"
 
         // Environment & Variable Setup
         REPO_URL="https://shaman.ceph.com/r/ceph"
@@ -30,127 +26,252 @@ pipeline {
         RPM_BUILD_OPTS="${params.RPM_BUILD_OPTS}"
 
         // Set up a build paths for artifacts
-        RPM_BUILDAREA="${SHARED_WS}/rpm"
-        RELEASE_BUILDAREA="${SHARED_WS}/release"
         CEPH_DIR="${SHARED_WS}/ceph"
+        ARTIFACTS_DIR="${SHARED_WS}/artifacts"
+
+        // Set up build scripts
         BUILD_BINARY="${SHARED_WS}/jobs/pipelines/sample_ceph_build_ci/build_binary.sh"
+        BUILD_RPM = "${SHARED_WS}/containers/agents/build/centos/build_rpm"
+        BUILD_DEB = "${SHARED_WS}/containers/agents/build/ubuntu/build_deb"
     }
 
     stages {
-        stage("Checkout Pipeline Code") {
-            steps {
-                // Pull the Jenkinsfile repository
-                dir("${SHARED_WS}") {
-                    checkout scm
+        stage("Checkout and Build Binary") {
+            agent {
+                node {
+                    label "ceph-build-fedora39-agent"
                 }
             }
-        }
 
-        stage("Checkout Ceph Repository") {
-            steps {
-                echo "Checking out Ceph source code ..."
+            stages {
+                stage("Checkout Pipeline Code") {
+                    steps {
+                        // Pull the Jenkinsfile repository
+                        dir("${SHARED_WS}") {
+                            checkout scm
+                        }
+                    }
+                }
 
-                // Pull Ceph source code
-                dir("${CEPH_DIR}") {
-                    script {
-                        echo "Updating existing repository and submodules ..."
+                stage("Checkout Ceph Repository") {
+                    steps {
+                        echo "Checking out Ceph source code ..."
 
-                        // Checkout is blocking: clone + submodules complete before next step
-                        checkout([
-                            $class: "GitSCM",
-                            branches: [[name: "${params.CEPH_BRANCH}"]],
-                            extensions: [
-                                [$class: "CleanBeforeCheckout",
-                                    deleteUntrackedNestedRepositories: true],
-                                [$class: "CloneOption", depth: 1, shallow: true,
-                                    noTags: false],
-                                [$class: "SubmoduleOption",
-                                    disableSubmodules: false,
-                                    parentCredentials: true,
-                                    recursiveSubmodules: true,
-                                    shallow: true
-                                ]
-                            ],
-                            userRemoteConfigs: [[url: "${params.CEPH_REPO}"]]
-                        ])
+                        // Pull Ceph source code
+                        dir("${CEPH_DIR}") {
+                            script {
+                                echo "Updating existing repository and submodules ..."
 
-                        // Ensure submodules are fully checked out before proceeding
-                        sh(
-                            script: "git submodule status --recursive",
-                            label: "Verify submodules"
-                        )
+                                // clone + submodules complete before next step
+                                checkout([
+                                    $class: "GitSCM",
+                                    branches: [[name: "${params.CEPH_BRANCH}"]],
+                                    extensions: [
+                                        [$class: "CleanBeforeCheckout",
+                                            deleteUntrackedNestedRepositories: true],
+                                        [$class: "CloneOption", depth: 1, shallow: true,
+                                            noTags: false],
+                                        [$class: "SubmoduleOption",
+                                            disableSubmodules: false,
+                                            parentCredentials: true,
+                                            recursiveSubmodules: true,
+                                            shallow: true
+                                        ]
+                                    ],
+                                    userRemoteConfigs: [[url: "${params.CEPH_REPO}"]]
+                                ])
 
-                        // fetch all tags
-                        sh(
-                            script: "git fetch --tags --unshallow || git fetch --tags",
-                            label: "Fetch all tags"
-                        )
+                                // Ensure submodules are fully checked out before proceeding
+                                sh(
+                                    script: "git submodule status --recursive",
+                                    label: "Verify submodules"
+                                )
 
-                        // Verify commit hash and version
-                        env.SHA1 = sh(
-                            script: "git rev-parse HEAD 2>/dev/null || echo \"unknown\"",
-                            returnStdout: true
-                        ).trim()
-                        env.VERSION = sh(
-                            script: "git describe --abbrev=8 --match \"v*\" --always " +
-                                "| sed \"s/^v//\"",
-                            returnStdout: true
-                        ).trim()
+                                // fetch all tags
+                                sh(
+                                    script: "git fetch --tags --unshallow || git fetch --tags",
+                                    label: "Fetch all tags"
+                                )
+                            }
+                        }
+                    }
+                }
 
-                        // Replace last '-' with '.' in VERSION
-                        env.VERSION = sh(
-                            script: "echo $VERSION | sed \"s/-/./2\"", returnStdout: true
-                        ).trim()
+                stage("Build Binary") {
+                    steps {
+                        echo "Running the Ceph binary build script ..."
+
+                        dir("${CEPH_DIR}") {
+                            script {
+                                // Generate the SHA1 and VERSION
+                                env.SHA1 = sh(
+                                    script: "git rev-parse HEAD 2>/dev/null || echo \"unknown\"",
+                                    returnStdout: true
+                                ).trim()
+                                env.VERSION = sh(
+                                    script: "git describe --abbrev=8 --match \"v*\" --always " +
+                                        "| sed \"s/^v//\"",
+                                    returnStdout: true
+                                ).trim()
+
+                                // Replace last '-' with '.' in VERSION
+                                env.VERSION = sh(
+                                    script: "echo $VERSION | sed \"s/-/./2\"", returnStdout: true
+                                ).trim()
+
+                                // Run build_binary script
+                                sh "chmod +x ${BUILD_BINARY} && ${BUILD_BINARY}"
+                            }
+                        }
                     }
                 }
             }
         }
 
-        stage("Prepare Ceph Build Environment") {
-            steps {
-                echo "Preparing the Ceph build environment ..."
+        stage("Build RPMs and DEBs") {
+            parallel {
+                stage("Build CentOS 9 RPMs") {
+                    when {
+                        expression {
+                            allOf {
+                                expression {
+                                    return "centos9" in params.DISTRO
+                                }
+                                expression {
+                                    return "x86_64" in params.ARCH
+                                }
+                            }
+                        }
+                    }
+                    agent {
+                        node {
+                            label "ceph-build-centos9-agent"
+                        }
+                    }
+                    environment {
+                        RPM_BUILDAREA="${SHARED_WS}/rpm/centos9"
+                        RELEASE_BUILDAREA="${SHARED_WS}/release/centos9"
+                    }
+                    steps {
+                        echo "Running the Ceph RPM build script ..."
 
-                // Run setup_rpm script to prepare the build environment
-                dir("${CEPH_DIR}") {
-                    script {
-                        // Set distro version based on distro
-                        if ("centos9" in params.DISTRO) {
-                            env.DISTRO_VERSION = "9"
-                            env.BUILD_RPM = "${SHARED_WS}/containers/agents/build/" +
-                                "centos/build_rpm"
-                        } else {
-                            error "Unsupported distro: ${params.DISTRO}"
+                        // Run build_rpm script
+                        dir("${CEPH_DIR}") {
+                            script {
+                                sh "chmod +x ${BUILD_RPM} && ${BUILD_RPM}"
+                            }
                         }
 
-                        // Set repo url for shaman
-                        env.REPO_URL = "${REPO_URL}/${params.CEPH_BRANCH}/${SHA1}/" +
-                            "${params.DISTRO}/${DISTRO_VERSION}/flavors/${params.FLAVOR}"
+                        // Archive RPMs
+                        echo "RPMs for CentOS 9 built successfully! Archiving ..."
+                        dir("${ARTIFACTS_DIR}/centos9") {
+                            sh "mkdir -p x86_64 noarch SRPMS"
+                            sh """
+                                rsync -a \\
+                                    --include='*/' --include='*x86_64.rpm' \\
+                                    --exclude='*' ${RPM_BUILDAREA}/ x86_64/
+                                rsync -a \\
+                                    --include='*/' --include='*noarch.rpm' \\
+                                    --exclude='*' ${RPM_BUILDAREA}/ noarch/
+                                rsync -a \\
+                                    --include='*/' --include='*src.rpm' \\
+                                    --exclude='*' ${RPM_BUILDAREA}/ SRPMS/
+                            """
+                        }
                     }
                 }
-            }
-        }
 
-        stage("Build Binary") {
-            steps {
-                echo "Running the Ceph binary build script ..."
+                stage("Build Ubuntu 22.04 DEBs") {
+                    when {
+                        expression {
+                            allOf {
+                                expression {
+                                    return "jammy" in params.DISTRO
+                                }
+                                expression {
+                                    return "x86_64" in params.ARCH
+                                }
+                            }
+                        }
+                    }
+                    agent {
+                        node {
+                            label "ceph-build-ubuntu-jammy-agent"
+                        }
+                    }
+                    environment {
+                        DEB_BUILDAREA="${SHARED_WS}/deb/jammy"
+                        RELEASE_BUILDAREA="${SHARED_WS}/release/jammy"
+                        DIST="jammy"
+                    }
+                    steps {
+                        echo "Running the Ceph DEB build script ..."
 
-                dir("${CEPH_DIR}") {
-                    script {
-                        // Run build_binary script
-                        sh "chmod +x ${BUILD_BINARY} && ${BUILD_BINARY}"
+                        // Run build_deb script
+                        dir("${CEPH_DIR}") {
+                            script {
+                                sh "chmod +x ${BUILD_DEB} && ${BUILD_DEB}"
+                            }
+                        }
+
+                        // Archive DEBs
+                        echo "DEBs for Ubuntu 22.04 built successfully! Archiving ..."
+                        dir("${ARTIFACTS_DIR}/jammy") {
+                            sh """
+                                rsync -a \\
+                                    ${RELEASE_BUILDAREA}/db \\
+                                    ${RELEASE_BUILDAREA}/dists \\
+                                    ${RELEASE_BUILDAREA}/pool \\
+                                    .
+                            """
+                        }
                     }
                 }
-            }
-        }
 
-        stage("Build RPMs") {
-            steps {
-                echo "Running the Ceph RPM build script ..."
+                stage("Build Ubuntu 24.04 DEBs") {
+                    when {
+                        expression {
+                            allOf {
+                                expression {
+                                    return "noble" in params.DISTRO
+                                }
+                                expression {
+                                    return "x86_64" in params.ARCH
+                                }
+                            }
+                        }
+                    }
+                    agent {
+                        node {
+                            label "ceph-build-ubuntu-noble-agent"
+                        }
+                    }
+                    environment {
+                        DEB_BUILDAREA="${SHARED_WS}/deb/noble"
+                        RELEASE_BUILDAREA="${SHARED_WS}/release/noble"
+                        DIST="noble"
+                    }
+                    steps {
+                        echo "Running the Ceph DEB build script ..."
 
-                // Run build_rpm script
-                dir("${CEPH_DIR}") {
-                    script {
-                        sh "chmod +x ${BUILD_RPM} && ${BUILD_RPM}"
+                        // Run build_deb script
+                        dir("${CEPH_DIR}") {
+                            script {
+                                sh "chmod +x ${BUILD_DEB} && ${BUILD_DEB}"
+                            }
+                        }
+
+                        // Archive DEBs
+                        echo "DEBs for Ubuntu 24.04 built successfully! Archiving ..."
+                        dir("${ARTIFACTS_DIR}/noble") {
+                            sh """
+                                rsync -a \\
+                                    ${RELEASE_BUILDAREA}/db \\
+                                    ${RELEASE_BUILDAREA}/dists \\
+                                    ${RELEASE_BUILDAREA}/pool \\
+                                    .
+                            """
+                        }
                     }
                 }
             }
@@ -158,34 +279,24 @@ pipeline {
     }
 
     post {
-        success {
-            echo "RPMs built successfully! Archiving ..."
-            script {
-                // Save the RPMs
-                dir("artifacts") {
+        always {
+            node("ceph-build-fedora39-agent") {
+                ws("${SHARED_WS}") {
                     script {
-                        // Create the directories
-                        sh "mkdir -p x86_64 noarch SRPMS"
+                        // Archive whatever artifacts were produced
+                        if (fileExists("${ARTIFACTS_DIR}")) {
+                            echo "Archiving RPMs and DEBs ..."
+                            archiveArtifacts(
+                                artifacts: "${ARTIFACTS_DIR}/**", allowEmptyArchive: true
+                            )
+                        }
 
-                        // Copy the RPMs
-                        sh """
-                           find ${RPM_BUILDAREA} -name "*x86_64.rpm" -exec cp {} x86_64/ \\;
-                           find ${RPM_BUILDAREA} -name "*noarch.rpm" -exec cp {} noarch/ \\;
-                           find ${RPM_BUILDAREA} -name "*src.rpm" -exec cp {} SRPMS/ \\;
-                        """
-
-                        // Archive the RPMs
-                        archiveArtifacts(
-                            artifacts: "x86_64/*.rpm,noarch/*.rpm,SRPMS/*.rpm",
-                            allowEmptyArchive: false
-                        )
+                        // Clean up the shared workspace
+                        echo "Cleaning up shared workspace ..."
+                        cleanWs()
                     }
                 }
             }
-        }
-
-        failure {
-            echo "Build failed. Check the logs for GCC or CMake errors."
         }
     }
 }

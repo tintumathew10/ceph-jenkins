@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Set strict error handling and pipefail
+set -euxo pipefail
+
 # Create RPM and release build area
 mkdir -p "${RPM_BUILDAREA}"/{SOURCES,SRPMS,SPECS,RPMS,BUILD}
 mkdir -p "${RELEASE_BUILDAREA}"/{SOURCES,SPECS,RPMS,BUILD}
@@ -8,6 +11,7 @@ mkdir -p "${RELEASE_BUILDAREA}"/{SOURCES,SPECS,RPMS,BUILD}
 cp -v dist/ceph.spec "${RPM_BUILDAREA}/SPECS/ceph.spec"
 cp -v "dist/ceph-${VERSION}.tar.bz2" "${RPM_BUILDAREA}/SOURCES/"
 
+# Install build dependencies using dnf builddep
 sudo dnf builddep -y \
         --setopt="*.skip_if_unavailable=true" \
         "${RPM_BUILDAREA}/SPECS/ceph.spec"
@@ -75,11 +79,11 @@ rpmbuild -bb \
     "${RELEASE_BUILDAREA}/SPECS/ceph-release.spec"
 
 # Extract standalone cephadm
-cd "${WORKSPACE}"
-RPM_PATH=$(find "${RELEASE_BUILDAREA}/RPMS" -name "cephadm-*.rpm" | head -n 1)
+cd "${RELEASE_BUILDAREA}/RPMS/noarch"
+RPM_PATH=$(find . -maxdepth 1 -name "cephadm-*.rpm" | head -n 1)
 if [ -f "${RPM_PATH}" ]; then
     rpm2cpio "${RPM_PATH}" | cpio -i --to-stdout *sbin/cephadm > cephadm
-    echo "Extracted cephadm binary to ${WORKSPACE}/cephadm"
+    echo "Extracted cephadm binary to ${RELEASE_BUILDAREA}/RPMS/noarch/cephadm"
 fi
 
-echo "RPM Build and cephadm extraction completed."
+echo "RPM Build completed successfully!"
