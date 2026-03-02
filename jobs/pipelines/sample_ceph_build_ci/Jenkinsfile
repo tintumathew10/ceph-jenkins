@@ -168,14 +168,10 @@ pipeline {
                             sh "mkdir -p x86_64 noarch SRPMS"
                             sh """
                                 rsync -a \\
-                                    --include='*/' --include='*x86_64.rpm' \\
-                                    --exclude='*' ${RPM_BUILDAREA}/ x86_64/
-                                rsync -a \\
-                                    --include='*/' --include='*noarch.rpm' \\
-                                    --exclude='*' ${RPM_BUILDAREA}/ noarch/
-                                rsync -a \\
-                                    --include='*/' --include='*src.rpm' \\
-                                    --exclude='*' ${RPM_BUILDAREA}/ SRPMS/
+                                    ${RPM_BUILDAREA}/RPMS/x86_64 \\
+                                    ${RPM_BUILDAREA}/RPMS/noarch \\
+                                    ${RPM_BUILDAREA}/SRPMS \\
+                                    .
                             """
                         }
                     }
@@ -284,10 +280,10 @@ pipeline {
                 ws("${SHARED_WS}") {
                     script {
                         // Archive whatever artifacts were produced
-                        if (fileExists("${ARTIFACTS_DIR}")) {
+                        if (fileExists("artifacts")) {
                             echo "Archiving RPMs and DEBs ..."
                             archiveArtifacts(
-                                artifacts: "${ARTIFACTS_DIR}/**", allowEmptyArchive: true
+                                artifacts: "artifacts/**", allowEmptyArchive: true
                             )
                         }
 
