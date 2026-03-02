@@ -32,6 +32,7 @@ pipeline {
         // Set up build scripts
         BUILD_BINARY="${SHARED_WS}/jobs/pipelines/sample_ceph_build_ci/build_binary.sh"
         BUILD_RPM = "${SHARED_WS}/containers/agents/build/centos/build_rpm"
+        BUILD_RPM_ROCKY10 = "${SHARED_WS}/containers/agents/build/rocky-10/build_rpm"
         BUILD_DEB = "${SHARED_WS}/containers/agents/build/ubuntu/build_deb"
     }
 
@@ -166,6 +167,50 @@ pipeline {
                         echo "RPMs for CentOS 9 built successfully! Archiving ..."
                         dir("${ARTIFACTS_DIR}/centos9") {
                             sh "mkdir -p x86_64 noarch SRPMS"
+                            sh """
+                                rsync -a \\
+                                    ${RPM_BUILDAREA}/RPMS/x86_64 \\
+                                    ${RPM_BUILDAREA}/RPMS/noarch \\
+                                    ${RPM_BUILDAREA}/SRPMS \\
+                                    .
+                            """
+                        }
+                    }
+                }
+
+                stage("Build Rocky 10 RPMs") {
+                    when {
+                        expression {
+                            allOf {
+                                expression {
+                                    return "rocky10" in params.DISTRO
+                                }
+                                expression {
+                                    return "x86_64" in params.ARCH
+                                }
+                            }
+                        }
+                    }
+                    agent {
+                        node {
+                            label "ceph-build-rocky10-agent"
+                        }
+                    }
+                    environment {
+                        RPM_BUILDAREA="${SHARED_WS}/rpm/rocky10"
+                        RELEASE_BUILDAREA="${SHARED_WS}/release/rocky10"
+                    }
+                    steps {
+                        echo "Running the Ceph RPM build script ..."
+
+                        dir("${CEPH_DIR}") {
+                            script {
+                                sh "chmod +x ${BUILD_RPM_ROCKY10} && ${BUILD_RPM_ROCKY10}"
+                            }
+                        }
+
+                        echo "RPMs for Rocky 10 built successfully! Archiving ..."
+                        dir("${ARTIFACTS_DIR}/rocky10") {
                             sh """
                                 rsync -a \\
                                     ${RPM_BUILDAREA}/RPMS/x86_64 \\

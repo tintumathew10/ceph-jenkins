@@ -54,6 +54,12 @@ podman build \
     --build-arg GROUP_ID=$SOCKET_GID \
     -t ceph-jenkins-centos9-agent ./containers/agents/build/centos/9.stream
 
+echo "Building Rocky 10 Build Agent (with dynamic permissions)..."
+podman build \
+    --build-arg USER_ID=$HOST_UID \
+    --build-arg GROUP_ID=$SOCKET_GID \
+    -t ceph-jenkins-rocky10-agent ./containers/agents/build/rocky-10
+
 echo "Building Ubuntu Noble Build Agent (with dynamic permissions)..."
 podman build \
     --build-arg USER_ID=$HOST_UID \
@@ -81,6 +87,7 @@ REQUIRED_IMAGES=(
     "ceph-jenkins-seed-agent:latest"
     "ceph-jenkins-fedora39-agent:latest"
     "ceph-jenkins-centos9-agent:latest"
+    "ceph-jenkins-rocky10-agent:latest"
     "ceph-jenkins-ubuntu-noble-agent:latest"
     "ceph-jenkins-ubuntu-jammy-agent:latest"
 )
