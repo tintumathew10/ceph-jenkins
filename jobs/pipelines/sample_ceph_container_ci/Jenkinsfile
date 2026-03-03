@@ -1,0 +1,196 @@
+
+// Function to get the build detail from the Shaman API
+def get_build_details(branch, distro, release, arch, flavor) {
+    // Set the build URL
+    def build_url = "https://shaman.ceph.com/api/repos/ceph/${branch}/latest/${distro}/${release}/"
+
+    // Get the build detail
+    def get_build_detail = sh(script: "curl -s ${build_url}", returnStdout: true).trim()
+
+    // Parse the build detail
+    def build_detail_json = readJSON text: get_build_detail
+
+    // Find the build detail for the given architecture
+    def build_detail = build_detail_json.find {
+        arch in it.archs && it.flavor == flavor
+    }
+
+    // Validate the build detail
+    if (build_detail == null) {
+        error "No build detail found for branch ${branch}"
+    }
+
+    return build_detail
+}
+
+pipeline {
+    // Use jenkins server as the agent
+    agent none
+
+    options {
+        // Keep the last 20 builds
+        buildDiscarder(logRotator(numToKeepStr: "20"))
+
+        // Do not checkout code automatically
+        skipDefaultCheckout()
+
+        // Timestamps in console output
+        timestamps()
+
+        // Colorize console output
+        ansiColor("xterm")
+    }
+
+    environment {
+        // Set shared workspace path
+        SHARED_WS="/home/jenkins/workspace/${JOB_NAME}/${BUILD_NUMBER}"
+
+        // Set up the environment variables that build_containe expects
+        BUILD_CONTAINER_SCRIPT= "${SHARED_WS}/jobs/pipelines/sample_ceph_container_ci/build_container.sh"
+
+        // Set up the Ceph directory
+        CEPH_DIR="${SHARED_WS}/ceph"
+    }
+
+    stages {
+        stage("Checkout Ceph Repository") {
+            agent {
+                node {
+                    label "ceph-build-fedora39-agent"
+                }
+            }
+
+            stages {
+                stage("Checkout Pipeline Code") {
+                    steps {
+                        // Pull the Jenkinsfile repository
+                        dir("${SHARED_WS}") {
+                            checkout scm
+                        }
+                    }
+                }
+            }
+        }
+
+        stage("Build Ceph Container Image") {
+            parallel {
+                stage("Build CentOS9-x86_64 Container Image") {
+                    when {
+                        allOf {
+                            expression {
+                                return "centos9" in params.DISTRO
+                            }
+                            expression {
+                                return "x86_64" in params.ARCH
+                            }
+                        }
+                    }
+
+                    agent {
+                        node {
+                            label "ceph-build-buildah-agent"
+                        }
+                    }
+
+                    environment {
+                        FROM_IMAGE="quay.io/centos/centos:stream9"
+                        DISTRO="centos"
+                        RELEASE="9"
+                        ARCH="x86_64"
+                    }
+
+                    steps {
+                        script {
+                            echo "Running Buildah container image build script ..."
+                            
+                            // Get the build details
+                            def build_detail = get_build_details(
+                                params.CEPH_BRANCH, DISTRO, RELEASE, ARCH, params.FLAVOR
+                            )
+
+                            // Set the environment variables
+                            env.SHA1 = build_detail.sha1
+                            env.VERSION = build_detail.extra.version
+
+                            // Normalize the repository URL
+                            def chacra_url = build_detail.chacra_url
+                            if (chacra_url.endsWith("/")) {
+                                chacra_url = chacra_url.take(chacra_url.length() - 1)
+                            }
+                            env.REPO_URL = "${chacra_url}/repo"
+
+                            // Execute the build container script
+                            dir("${CEPH_DIR}") {
+                                sh "chmod +x ${BUILD_CONTAINER_SCRIPT} && ${BUILD_CONTAINER_SCRIPT}"
+                            }
+                        }
+                    }
+                }
+
+                stage("Build Rocky10-x86_64 Container Image") {
+                    when {
+                        allOf {
+                            expression {
+                                return "rocky10" in params.DISTRO
+                            }
+                            expression {
+                                return "x86_64" in params.ARCH
+                            }
+                        }
+                    }
+
+                    agent {
+                        node {
+                            label "ceph-build-buildah-agent"
+                        }
+                    }
+
+                    environment {
+                        FROM_IMAGE="docker.io/rockylinux/rockylinux:10"
+                        DISTRO="rocky"
+                        RELEASE="10"
+                        ARCH="x86_64"
+                    }
+
+                    steps {
+                        script {
+                            // Get the build details
+                            def build_detail = get_build_details(
+                                params.CEPH_BRANCH, DISTRO, RELEASE, ARCH, params.FLAVOR
+                            )
+
+                            // Set the environment variables
+                            env.SHA1 = build_detail.sha1
+                            env.VERSION = build_detail.extra.version
+
+                            // Normalize the repository URL
+                            def chacra_url = build_detail.chacra_url
+                            if (chacra_url.endsWith("/")) {
+                                chacra_url = chacra_url.take(chacra_url.length() - 1)
+                            }
+                            env.REPO_URL = "${chacra_url}/repo"
+
+                            // Execute the build container script
+                            dir("${CEPH_DIR}") {
+                                sh "chmod +x ${BUILD_CONTAINER_SCRIPT} && ${BUILD_CONTAINER_SCRIPT}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            node("ceph-build-fedora39-agent") {
+                ws("${SHARED_WS}") {
+                    script {
+                        echo "Cleaning up shared workspace ${SHARED_WS} ..."
+                        cleanWs(disableDeferredWipeout: true, deleteDirs: true)
+                    }
+                }
+            }
+        }
+    }
+}

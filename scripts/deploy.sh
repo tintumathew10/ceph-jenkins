@@ -72,6 +72,12 @@ podman build \
     --build-arg GROUP_ID=$SOCKET_GID \
     -t ceph-jenkins-ubuntu-jammy-agent ./containers/agents/build/ubuntu/jammy
 
+echo "Building Buildah Build Agent (with dynamic permissions)..."
+podman build \
+    --build-arg USER_ID=$HOST_UID \
+    --build-arg GROUP_ID=$SOCKET_GID \
+    -t ceph-jenkins-buildah-agent ./containers/agents/build/buildah
+
 # --- Cleanup Existing Container ---
 if [ "$(podman ps -aq -f name=jenkins-controller)" ]; then
     echo "Stopping and removing existing jenkins-controller..."
@@ -90,6 +96,7 @@ REQUIRED_IMAGES=(
     "ceph-jenkins-rocky10-agent:latest"
     "ceph-jenkins-ubuntu-noble-agent:latest"
     "ceph-jenkins-ubuntu-jammy-agent:latest"
+    "ceph-jenkins-buildah-agent:latest"
 )
 MISSING=()
 
