@@ -27,10 +27,10 @@ def runTeuthologyStage(stageConfig) {
             env.RUNNER_PARAMS = "--branch ${params.BRANCH.toLowerCase()} "
             env.RUNNER_PARAMS += " ${stageConfig.runnerParams}"
 
-            // Run the teuthology runner and waiter scripts
-            sh shell: "/bin/bash", script: """
-                chmod +x ${TEUTHOLOGY_RUNNER_SCRIPT} && . ${TEUTHOLOGY_RUNNER_SCRIPT}
-                chmod +x ${TEUTHOLOGY_WAITER_SCRIPT} && ${TEUTHOLOGY_WAITER_SCRIPT}
+            // Run the teuthology runner and waiter scripts under bash explicitly
+            // (sh step may ignore 'shell' and use /bin/sh, which breaks [[ and BASH_SOURCE)
+            sh script: """
+                /bin/bash -c 'chmod +x "${TEUTHOLOGY_RUNNER_SCRIPT}" && . "${TEUTHOLOGY_RUNNER_SCRIPT}"'
             """
         }
     }
@@ -61,13 +61,16 @@ pipeline {
 
         // Set up the teuthology runner directory
         TEUTHOLOGY_DIR="/home/ubuntu/teuthology"
+        VIRTUALENV_PATH="${TEUTHOLOGY_DIR}/virtualenv"
+        OVERRIDE_YAML = '/home/ubuntu/override.yaml'
 
         // Set teuthology directory path
         TEUTHOLOGY_PIPELINE_DIR="${SHARED_WS}/jobs/pipelines/teuthology_runner_ci"
 
         // Set teuthology runner and waiter script paths
         TEUTHOLOGY_RUNNER_SCRIPT="${TEUTHOLOGY_PIPELINE_DIR}/teuthology-runner.sh"
-        TEUTHOLOGY_WAITER_SCRIPT="${TEUTHOLOGY_PIPELINE_DIR}/teuthology-waiter.sh"
+        // TEUTHOLOGY_WAITER_SCRIPT="${TEUTHOLOGY_PIPELINE_DIR}/teuthology-waiter.sh"
+        TEUTHOLOGY_RERUN_SCRIPT="${TEUTHOLOGY_PIPELINE_DIR}/teuthology-rerun.sh"
     }
 
     stages {
@@ -87,6 +90,26 @@ pipeline {
                     }
                 }
             }
+        }
+    }
+
+    post {
+        always {
+            echo "Teuthology runner pipeline finished. Build result: ${currentBuild.currentResult}"
+            dir(SHARED_WS) {
+                sh script: """
+                    /bin/bash -c 'chmod +x "${TEUTHOLOGY_RERUN_SCRIPT}" && "${TEUTHOLOGY_RERUN_SCRIPT}"'
+                """
+            }
+        }
+        success {
+            echo "All selected teuthology suites completed successfully."
+        }
+        failure {
+            echo "One or more teuthology suites failed."
+        }
+        unstable {
+            echo "Build marked unstable."
         }
     }
 }
