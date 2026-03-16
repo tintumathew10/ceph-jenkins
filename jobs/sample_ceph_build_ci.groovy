@@ -30,6 +30,7 @@ pipelineJob("sample-ceph-pipeline") {
                 "Additional RPM build options"
             )
             stringParam("DEB_BUILD_OPTS", "", "Additional DEB build options")
+            booleanParam("PUBLISH_ARTIFACTS", true, "Publish built packages to Pulp")
         }
     }
 }

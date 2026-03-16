@@ -32,6 +32,12 @@ jenkins:
         numExecutors: 10
         credentialsId: "teuthology-node-credentials"
 
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "PULP_PROJECT_REPO"
+            value: "https://github.com/vamahaja/pulp-project.git"
+
   # Cloud agent configuration
   clouds:
     - docker:
@@ -177,6 +183,10 @@ credentials:
           - usernamePassword:
               id: "teuthology-node-credentials"
               description: "Username/Password credentials for teuthology node"
+              scope: GLOBAL
+          - usernamePassword:
+              id: "pulp-credentials"
+              description: "Pulp server credentials for artifact uploads"
               scope: GLOBAL
 
 security:

@@ -28,6 +28,9 @@ RUN dnf install --allowerasing -y \
     curl && \
     dnf clean all
 
+# Install Pulp CLI for artifact uploads
+RUN pip3 install pulp-cli pulp-cli-deb
+
 # Configure CentOS 9 Repositories for Ceph build dependencies
 RUN dnf -y copr enable ceph/el9 && \
     dnf config-manager --set-enabled crb && \

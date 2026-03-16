@@ -16,6 +16,12 @@ jenkins:
             launchTimeoutSeconds: 120
             maxNumRetries: 10
 
+  globalNodeProperties:
+    - envVars:
+        env:
+          - key: "PULP_SERVER_URL"
+            value: "<pulp_server_url>"
+
 credentials:
   system:
     domainCredentials:
@@ -24,6 +30,10 @@ credentials:
               id: "teuthology-node-credentials"
               username: "<teuthology_node_username>"
               password: "<teuthology_node_password>"
+          - usernamePassword:
+              id: "pulp-credentials"
+              username: "<pulp_username>"
+              password: "<pulp_password>"
 
 unclassified:
   location:

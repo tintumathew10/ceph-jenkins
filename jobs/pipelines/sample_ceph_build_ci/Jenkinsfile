@@ -1,3 +1,29 @@
+def publish_to_pulp(artifactPath, distro, distroVersion, arch) {
+    withCredentials([usernamePassword(
+        credentialsId: "pulp-credentials",
+        usernameVariable: "PULP_USER",
+        passwordVariable: "PULP_PASS"
+    )]) {
+        sh """
+            ${PULP_PROJECT_DIR}/scripts/configure-client.sh \
+                --username "\$PULP_USER" \
+                --password "\$PULP_PASS" \
+                --overwrite
+        """
+    }
+    sh """
+        set -e
+        ${PULP_PUBLISH_SCRIPT} '${artifactPath}' \
+            --branch '${params.CEPH_BRANCH}' \
+            --sha1 '${env.SHA1}' \
+            --distro '${distro}' \
+            --distro-version '${distroVersion}' \
+            --arch '${arch}' \
+            --flavor '${params.FLAVOR}'
+    """
+    echo "Published: ${env.PULP_SERVER_URL}/pulp/content/repos/ceph/${params.CEPH_BRANCH}/${env.SHA1}/${distro}/${distroVersion}/flavors/${params.FLAVOR}/"
+}
+
 pipeline {
     agent none
 
@@ -34,6 +60,9 @@ pipeline {
         BUILD_RPM = "${SHARED_WS}/containers/agents/build/centos/build_rpm"
         BUILD_RPM_ROCKY10 = "${SHARED_WS}/containers/agents/build/centos/build_rpm"
         BUILD_DEB = "${SHARED_WS}/containers/agents/build/ubuntu/build_deb"
+
+        PULP_PROJECT_DIR="${SHARED_WS}/pulp-project"
+        PULP_PUBLISH_SCRIPT="${SHARED_WS}/pulp-project/scripts/publish-packages.sh"
     }
 
     stages {
@@ -47,10 +76,26 @@ pipeline {
             stages {
                 stage("Checkout Repositories") {
                     steps {
-                        // Pull the Jenkinsfile repository
+                        // Clone the Jenkinsfile repository
                         dir("${SHARED_WS}") {
                             checkout scm
                         }
+
+                        // Clone the Pulp project repository
+                        dir("${PULP_PROJECT_DIR}") {
+                            checkout([
+                                $class: "GitSCM",
+                                branches: [[name: "main"]],
+                                extensions: [
+                                    [$class: "CloneOption", depth: 1,
+                                        shallow: true, noTags: true]
+                                ],
+                                userRemoteConfigs: [
+                                    [url: "${env.PULP_PROJECT_REPO}"]
+                                ]
+                            ])
+                        }
+                        sh "chmod +x ${PULP_PROJECT_DIR}/scripts/*.sh"
                     }
                 }
 
@@ -150,6 +195,8 @@ pipeline {
                     environment {
                         RPM_BUILDAREA="${SHARED_WS}/rpm/centos9"
                         RELEASE_BUILDAREA="${SHARED_WS}/release/centos9"
+                        DIST="centos"
+                        DIST_VERSION="9"
                     }
                     steps {
                         echo "Running the Ceph RPM build script ..."
@@ -173,6 +220,17 @@ pipeline {
                                     .
                             """
                         }
+
+                        script {
+                            if (params.PUBLISH_ARTIFACTS) {
+                                for (arch in ["x86_64", "noarch", "SRPMS"]) {
+                                    def artifactPath = "${ARTIFACTS_DIR}/centos9/${arch}"
+                                    if (fileExists(artifactPath)) {
+                                        publish_to_pulp(artifactPath, "${DIST}", "${DIST_VERSION}", arch)
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -195,6 +253,8 @@ pipeline {
                     environment {
                         RPM_BUILDAREA="${SHARED_WS}/rpm/rocky10"
                         RELEASE_BUILDAREA="${SHARED_WS}/release/rocky10"
+                        DIST="rocky"
+                        DIST_VERSION="10"
                     }
                     steps {
                         echo "Running the Ceph RPM build script ..."
@@ -214,6 +274,17 @@ pipeline {
                                     ${RPM_BUILDAREA}/SRPMS \\
                                     .
                             """
+                        }
+
+                        script {
+                            if (params.PUBLISH_ARTIFACTS) {
+                                for (arch in ["x86_64", "noarch", "SRPMS"]) {
+                                    def artifactPath = "${ARTIFACTS_DIR}/rocky10/${arch}"
+                                    if (fileExists(artifactPath)) {
+                                        publish_to_pulp(artifactPath, "${DIST}", "${DIST_VERSION}", arch)
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -262,6 +333,15 @@ pipeline {
                                     .
                             """
                         }
+
+                        script {
+                            if (params.PUBLISH_ARTIFACTS) {
+                                def artifactPath = "${ARTIFACTS_DIR}/${DIST_VERSION}/${ARCH}/pool"
+                                if (fileExists(artifactPath)) {
+                                    publish_to_pulp(artifactPath, "${DIST}", "${DIST_VERSION}", "${ARCH}")
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -308,6 +388,15 @@ pipeline {
                                     ${RELEASE_BUILDAREA}/pool \\
                                     .
                             """
+                        }
+
+                        script {
+                            if (params.PUBLISH_ARTIFACTS) {
+                                def artifactPath = "${ARTIFACTS_DIR}/${DIST_VERSION}/${ARCH}/pool"
+                                if (fileExists(artifactPath)) {
+                                    publish_to_pulp(artifactPath, "${DIST}", "${DIST_VERSION}", "${ARCH}")
+                                }
+                            }
                         }
                     }
                 }

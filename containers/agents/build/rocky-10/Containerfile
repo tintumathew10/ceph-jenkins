@@ -31,6 +31,9 @@ RUN dnf install --allowerasing -y \
     curl && \
     dnf clean all
 
+# Install Pulp CLI for artifact uploads
+RUN pip3 install pulp-cli pulp-cli-deb
+
 # Enable CRB and EPEL repositories for Ceph build dependencies
 RUN dnf -y install epel-release dnf-plugins-core && \
     /usr/bin/crb enable && \
