@@ -34,7 +34,7 @@ echo "Detected Host UID: $HOST_UID"
 
 # --- Build Images ---
 echo "Building Jenkins Controller..."
-podman build -t ceph-jenkins-controller ./containers/controller
+podman build --pull=always -t ceph-jenkins-controller ./containers/controller
 
 echo "Building Seed Agent (with dynamic permissions)..."
 podman build \
