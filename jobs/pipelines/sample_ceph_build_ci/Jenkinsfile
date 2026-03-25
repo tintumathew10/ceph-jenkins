@@ -1,4 +1,4 @@
-def publish_to_pulp(artifactPath, distro, distroVersion, arch) {
+def configure_pulp_client() {
     withCredentials([usernamePassword(
         credentialsId: "pulp-credentials",
         usernameVariable: "PULP_USER",
@@ -11,6 +11,9 @@ def publish_to_pulp(artifactPath, distro, distroVersion, arch) {
                 --overwrite
         """
     }
+}
+
+def publish_to_pulp(artifactPath, distro, distroVersion, arch) {
     sh """
         set -e
         ${PULP_PUBLISH_SCRIPT} '${artifactPath}' \
@@ -21,7 +24,6 @@ def publish_to_pulp(artifactPath, distro, distroVersion, arch) {
             --arch '${arch}' \
             --flavor '${params.FLAVOR}'
     """
-    echo "Published: ${env.PULP_SERVER_URL}/pulp/content/repos/ceph/${params.CEPH_BRANCH}/${env.SHA1}/${distro}/${distroVersion}/flavors/${params.FLAVOR}/"
 }
 
 pipeline {
@@ -223,12 +225,14 @@ pipeline {
 
                         script {
                             if (params.PUBLISH_ARTIFACTS) {
+                                configure_pulp_client()
                                 for (arch in ["x86_64", "noarch", "SRPMS"]) {
                                     def artifactPath = "${ARTIFACTS_DIR}/centos9/${arch}"
                                     if (fileExists(artifactPath)) {
                                         publish_to_pulp(artifactPath, "${DIST}", "${DIST_VERSION}", arch)
                                     }
                                 }
+                                echo "Published: ${env.PULP_SERVER_URL}/pulp/content/repos/ceph/${params.CEPH_BRANCH}/${env.SHA1}/${DIST}/${DIST_VERSION}/flavors/${params.FLAVOR}/"
                             }
                         }
                     }
@@ -278,12 +282,14 @@ pipeline {
 
                         script {
                             if (params.PUBLISH_ARTIFACTS) {
+                                configure_pulp_client()
                                 for (arch in ["x86_64", "noarch", "SRPMS"]) {
                                     def artifactPath = "${ARTIFACTS_DIR}/rocky10/${arch}"
                                     if (fileExists(artifactPath)) {
                                         publish_to_pulp(artifactPath, "${DIST}", "${DIST_VERSION}", arch)
                                     }
                                 }
+                                echo "Published: ${env.PULP_SERVER_URL}/pulp/content/repos/ceph/${params.CEPH_BRANCH}/${env.SHA1}/${DIST}/${DIST_VERSION}/flavors/${params.FLAVOR}/"
                             }
                         }
                     }
@@ -336,10 +342,12 @@ pipeline {
 
                         script {
                             if (params.PUBLISH_ARTIFACTS) {
+                                configure_pulp_client()
                                 def artifactPath = "${ARTIFACTS_DIR}/${DIST_VERSION}/${ARCH}/pool"
                                 if (fileExists(artifactPath)) {
                                     publish_to_pulp(artifactPath, "${DIST}", "${DIST_VERSION}", "${ARCH}")
                                 }
+                                echo "Published: ${env.PULP_SERVER_URL}/pulp/content/repos/ceph/${params.CEPH_BRANCH}/${env.SHA1}/${DIST}/${DIST_VERSION}/flavors/${params.FLAVOR}/"
                             }
                         }
                     }
@@ -392,10 +400,12 @@ pipeline {
 
                         script {
                             if (params.PUBLISH_ARTIFACTS) {
+                                configure_pulp_client()
                                 def artifactPath = "${ARTIFACTS_DIR}/${DIST_VERSION}/${ARCH}/pool"
                                 if (fileExists(artifactPath)) {
                                     publish_to_pulp(artifactPath, "${DIST}", "${DIST_VERSION}", "${ARCH}")
                                 }
+                                echo "Published: ${env.PULP_SERVER_URL}/pulp/content/repos/ceph/${params.CEPH_BRANCH}/${env.SHA1}/${DIST}/${DIST_VERSION}/flavors/${params.FLAVOR}/"
                             }
                         }
                     }
